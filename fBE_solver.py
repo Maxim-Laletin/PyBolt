@@ -32,7 +32,23 @@ class DecayToX: # 1->2 decay where X is massless
     def rate(proc,x,Y):
         # with a Bessel function (MB distribution for decaying particle)
         return 8*proc._Gamma*proc._m1**3*(x*kn(1,x))*(1 - Y/Y_x_eq(proc._m1/x))/(2*np.pi)**2 # !!! CHECK THE NUMBERS OF DEGREES OF FREEDOM !!!
+
+
+class FokkerPlanck: # see Eq. 5 in 2103.01944
+    def __init__(process,m1,m2,g_1,):
+        process._m1 = m1 # mass of the  particle
+        process._m2 = m2 # mass of the daughter particle
+        process._g_1 = g_1 # dof of the decaying particle
+
+    def gamma(proc,x):
         
+
+
+    def collisionTerm(proc,x,q,f,dfdq,d2fdq2):
+
+        return 
+        
+    
 
 # =================================================================================================================================
 
@@ -124,8 +140,9 @@ class Model:
                   dfdq[j] = fq[j-1]*(1.0 + dq/2 + dq**2/6 + dq**3/24 + dq**4/120) # exponential tail
                 
             #dfq_x[j] = ( gtilda(m1/x)*( q[j]*dfdq[j] - 2*fq[j] ) + q[j]**2*CollInt_dec(x,q[j])*(fq[j] - f_eq[j])/H_t(m1/x) )/x
-            dfq_x = ( gtilda(model._m/x)*( q*dfdq - 2*fq ) + q**2*(model._CI(x,q,fq)/(2*model._g*q))/H_t(model._m/x) )/x
-    
+            dfq_x = ( gtilda(model._m/x)*( q*dfdq - 2*fq ) + q**2*(model._CI(x,q,fq)/(2*model._g*sqrt(x**2 + q**2)))/H_t(model._m/x) )/x
+
+            
             return dfq_x
     
         
