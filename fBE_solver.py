@@ -33,23 +33,6 @@ class DecayToX: # 1->2 decay where X is massless
         # with a Bessel function (MB distribution for decaying particle)
         return 8*proc._Gamma*proc._m1**3*(x*kn(1,x))*(1 - Y/Y_x_eq(proc._m1/x))/(2*np.pi)**2 # !!! CHECK THE NUMBERS OF DEGREES OF FREEDOM !!!
 
-
-class FokkerPlanck: # see Eq. 5 in 2103.01944
-    def __init__(process,m1,m2,g_1,):
-        process._m1 = m1 # mass of the  particle
-        process._m2 = m2 # mass of the daughter particle
-        process._g_1 = g_1 # dof of the decaying particle
-
-    def gamma(proc,x):
-        
-
-
-    def collisionTerm(proc,x,q,f,dfdq,d2fdq2):
-
-        return 
-        
-    
-
 # =================================================================================================================================
 
 # Class of the solver
