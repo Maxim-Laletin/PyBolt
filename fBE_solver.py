@@ -123,7 +123,8 @@ class Model:
                   dfdq[j] = fq[j-1]*(1.0 + dq/2 + dq**2/6 + dq**3/24 + dq**4/120) # exponential tail
                 
             #dfq_x[j] = ( gtilda(m1/x)*( q[j]*dfdq[j] - 2*fq[j] ) + q[j]**2*CollInt_dec(x,q[j])*(fq[j] - f_eq[j])/H_t(m1/x) )/x
-            dfq_x = ( gtilda(model._m/x)*( q*dfdq - 2*fq ) + q**2*(model._CI(x,q,fq)/(2*model._g*sqrt(x**2 + q**2)))/H_t(model._m/x) )/x
+            dfq_x = ( gtilda(model._m/x)*( q*dfdq - 2*fq ) + q**2*(model._CI(x,q,fq)/(2*model._g*q ))/H_t(model._m/x) )/x
+            # CHANGE q IN THE DENOMINATOR BELOW COLLISION TERM TO THE ENERGY OF THAT STATE
 
             
             return dfq_x
@@ -148,7 +149,7 @@ class Model:
     
         # RHS of the Boltzmann equation
         #YBE_RHS = lambda t,y: 8*Gamma*m1**3*qintode(t)[0]*(1 - y/Y_x_eq(m1/t)/g_x)*((2*np.pi)**2*H(m1/t)*s_ent(m1/t)*t**3)**(-1)
-        YBE_RHS = lambda x,Y: Rate(x,Y)*(H(model._m/x)*s_ent(model._m/x)*x**3)**(-1) 
+        YBE_RHS = lambda x,Y: Rate(x,Y)*(H_t(model._m/x)*s_ent(model._m/x)*x**3)**(-1) 
     
         sol =  solve_ivp(YBE_RHS,[x[0], x[-1]], [Y0], t_eval = x)
     
