@@ -31,7 +31,7 @@ class DecayToX: # 1->2 decay where X is massless
 
     def rate(proc,x,Y):
         # with a Bessel function (MB distribution for decaying particle)
-        return 8*proc._Gamma*proc._m1**3*(x*kn(1,x))*(1 - Y/Y_x_eq(proc._m1/x))/(2*np.pi)**2 # !!! CHECK THE NUMBERS OF DEGREES OF FREEDOM !!!
+        return 8*proc._Gamma*proc._m1**3*(kn(1,x)/x)*(1 - Y/Y_x_eq(proc._m1/x))/(2*np.pi)**2 # !!! CHECK THE NUMBERS OF DEGREES OF FREEDOM !!!
 
 # =================================================================================================================================
 
@@ -149,7 +149,7 @@ class Model:
     
         # RHS of the Boltzmann equation
         #YBE_RHS = lambda t,y: 8*Gamma*m1**3*qintode(t)[0]*(1 - y/Y_x_eq(m1/t)/g_x)*((2*np.pi)**2*H(m1/t)*s_ent(m1/t)*t**3)**(-1)
-        YBE_RHS = lambda x,Y: Rate(x,Y)*(H_t(model._m/x)*s_ent(model._m/x)*x**3)**(-1) 
+        YBE_RHS = lambda x,Y: Rate(x,Y)*(H_t(model._m/x)*s_ent(model._m/x)*x)**(-1) 
     
         sol =  solve_ivp(YBE_RHS,[x[0], x[-1]], [Y0], t_eval = x)
     
