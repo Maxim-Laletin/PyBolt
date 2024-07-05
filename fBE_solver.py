@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from cosmology import H_t, H, s_ent, gtilda, Y_x_eq
 from scipy.integrate import solve_ivp # ODE solver
+from scipy.interpolate import RegularGridInterpolator #interpolation
+import h5py 
 
 # =================================================================================================================================
 
@@ -74,6 +76,36 @@ class Model:
             return original_CI(x,q,f) + CollTerm(x,q,f)
         
         model._CI = combined_CI
+
+    def addUserCollisionTerm(model, path,use_extrapolation):
+            with h5py.File(path, 'r') as userCollisionFile: #reading file with (Collison,x,q,(p optional),f)
+                if len(userCollisionFile.keys())<4 or len(userCollisionFile.keys())>5: raise ValueError('The collision term should be a function of 3 or 4 variables, CollisionTerm(x,p,f) or CollisionTerm(x,p,q,f)') #checks if the file has correct number of tensors
+                # write check if the keys agree
+                # print("Keys: %s" % userCollisionFile.keys())
+                CollTerm = userCollisionFile['Collision'][:]
+                CollTermDim=CollTerm.ndim
+                x_grid = userCollisionFile['x'][:]
+                q_grid = userCollisionFile['q'][:]
+                f_grid = userCollisionFile['f'][:] #the question is: can we always factor out (f-feq), if so it could greatly reduce the size of the file
+                if CollTermDim==4: 
+                    p_grid=userCollisionFile['p'][:]
+
+            assert CollTerm.shape == (len(x_grid), len(q_grid), len(f_grid)), "Dimension mismatch in collision term and grids" #checks if the dimensions between grid and collision term agree
+            if CollTermDim==3: 
+                UserCollisionTerm_interpolation = RegularGridInterpolator((x_grid, q_grid, f_grid), CollTerm,bounds_error=not use_extrapolation, fill_value=None)
+                def wrapped_UserCollisionTerm_interpolation(x, q, f): #since interpolating function expects 3D array np.array([x,q,f]) and we want to allow for x,q,f with different shapes we need broadcasting
+                    x, q, f = np.broadcast_arrays(x, q, f)
+                    points = np.stack([x, q, f], axis=-1)
+                    return UserCollisionTerm_interpolation(points)
+                
+                model.addCollisionTerm(wrapped_UserCollisionTerm_interpolation)
+                model.changeGrid(x_grid,q_grid)
+            if CollTermDim==4: 
+                UserCollisionTerm_interpolation = RegularGridInterpolator((x_grid, q_grid,p_grid, f_grid), CollTerm,bounds_error=False, fill_value=None)
+                #TO BE CONTINUEUD WITH 4D COLLISION TERMS
+
+
+
 
     # ***************************************************************************************************
     # Non-Adaptive ODE system method Solver for the Full Boltzmann Equation
