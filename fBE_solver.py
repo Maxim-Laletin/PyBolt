@@ -33,6 +33,44 @@ class DecayToX: # 1->2 decay where X is massless
         # with a Bessel function (MB distribution for decaying particle)
         return 8*proc._Gamma*proc._m1**3*(kn(1,x)/x)*(1 - Y/Y_x_eq(proc._m1/x))/(2*np.pi)**2 # !!! CHECK THE NUMBERS OF DEGREES OF FREEDOM !!!
 
+
+class FokkerPlanck: # see Eq. 5 in 2103.01944
+    def __init__(process,m1,m2,g_1,m2func): 
+        process._m1 = m1 # mass of the X particle
+        process._m2 = m2 # mass of the SM particle
+        process._g_1 = g_1 # dof of X
+        process._Msquared = m2func.__get__(process) # passing Msquared by a reference
+        # m2func should be a function of three variables: m2func(process,s,t), where s and t are actual physical variables in units of GeV^2
+
+    # Here we assume that m1 is always (much) bigger than m2 (otherwise, FP approximation doesn't make sense) and that x = m1/T 
+    # !!! IN GENERAL WE SHOULD THINK OF A DIFFERENT WAY TO PASS X OR T !!! 
+
+    # w is the energy of the incoming SM particle (in GeV units)
+    def fSM(proc,w,x): # distribution function for SM state
+        return 1.0/(np.exp(w*x/proc._m1) + 1.0) # !!! INCLUDE CORRECT SPIN STATISTICS !!!
+
+    def gamma(proc,x): 
+        # x is a local parameter within this function
+        
+        def gamma_integrand(t,w):
+            s = lambda w: proc._m1**2 + proc._m2**2 + 2*proc._m1*w
+            return -proc.fSM(w,x)*(1.0 - proc.fSM(w,x))*t*proc._Msquared(s,t)/w
+            # !!! THE SIGN IN THE BRACKETS SHOULD TAKE INTO ACCOUNT ACTUAL SPIN STATISTICS !!!
+        wmin = proc._m2
+        wmax = 20.0*proc._m2 # we should find a proper value to set an upper limit for energy integration
+        tmin = lambda w: -4*(w**2 - proc._m2**2)/(1.0 + 2*w/proc._m1 + (proc._m2/proc._m1)**2) 
+        tmax = lambda w: 0.0
+        
+        gamma_int2, error = dblquad(gamma_integrand,wmin,wmax,tmin,tmax)
+
+        return x*gamma_int2/(48*proc._g_1*proc._m1**4*(2*np.pi)**3)
+
+    def collisionTerm(proc,x,q,f,dfdq,d2fdq2):
+
+        eq = np.sqrt(q**2 + x**2)
+        return proc._g_1*proc.gamma(x)*(eq*d2fdq2 + (2*eq/q + q + q/eq)*dfdq + 3*f)/q**2 
+
+        
 # =================================================================================================================================
 
 # Class of the solver
