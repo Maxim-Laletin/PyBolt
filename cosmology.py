@@ -50,3 +50,5 @@ s_ent = lambda T: h_s(T)*4*np.pi**2*T**3/90; # GeV^3
 
 # Comoving equilibrium number density of massless (relativistic) particles [per number of degrees of freedom (!)]
 Y_x_eq = lambda T: 90.0*Zeta3/(h_s(T)*4*np.pi**4) # 1
+# Comoving equilibrium number density of massive non-relativistic particles [per number of degrees of freedom (!)]
+Y_x_eq_massive = lambda T, m: 45.0/(2*np.pi**4*h_s(T))*(np.pi/8)**(1/2)*(m/T)**(3/2)*np.exp(-m/T)

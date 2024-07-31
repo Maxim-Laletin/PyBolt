@@ -1,7 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from cosmology import H_t, H, s_ent, gtilda, Y_x_eq
-from scipy.integrate import solve_ivp # ODE solver
+import constants as const
+import particle_physics as pp
+from cosmology import H_t, H, s_ent, gtilda, Y_x_eq, Y_x_eq_massive, h_s
+from scipy.integrate import quad, solve_ivp, fixed_quad # ODE solver
+from scipy.interpolate import interp1d
+import time
+from tqdm import tqdm
+import logging
 
 # =================================================================================================================================
 
@@ -9,75 +15,174 @@ from scipy.integrate import solve_ivp # ODE solver
 from scipy.special import kn # Bessel function
 
 class DecayToX: # 1->2 decay where X is massless
-    def __init__(process,m1,m2,g_1,Msquared,Gamma):
-        process._m1 = m1 # mass of the decaying particle
-        process._m2 = m2 # mass of the daughter particle
-        process._mu = m2/m1 # ratio of masses !!! (CHECK THAT M1 AND M2 ARE SANE) !!!
-        process._g_1 = g_1 # dof of the decaying particle
-        process._Msquared = Msquared # squared amplitude of the decay (summed over all final states)
-        process._Gamma = Gamma # !!! CAN BE ACTUALLY CALCULATED FROM MSQUARED
+    def __init__(self, m1, m2, g_1, Msquared, Gamma):
+        self._m1 = m1 # mass of the decaying particle
+        self._m2 = m2 # mass of the daughter particle
+        self._mu = m2/m1 # ratio of masses !!! (CHECK THAT M1 AND M2 ARE SANE) !!!
+        self._g_1 = g_1 # dof of the decaying particle
+        self._Msquared = Msquared # squared amplitude of the decay (summed over all final states)
+        self._Gamma = Gamma # !!! CAN BE ACTUALLY CALCULATED FROM MSQUARED
 
-    def collisionTerm(proc,x,q,f):
+    def collisionTerm(self, x, q, f):
         # Limits in the collision term
-        Elim1 = np.max([x*np.ones(q.shape), x*proc._mu+q, x**2*(1 + 4*q**2/(x**2*(1-proc._mu**2)) - proc._mu**2 )/4/q],axis=0)
-        Elim2 = np.max([x-q, x*proc._mu*np.ones(q.shape), x**2/4/q],axis=0)
+        Elim1 = np.max([x*np.ones(q.shape), x*self._mu+q, x**2*(1 + 4*q**2/(x**2*(1-self._mu**2)) - self._mu**2 )/4/q],axis=0)
+        Elim2 = np.max([x-q, x*self._mu*np.ones(q.shape), x**2/4/q],axis=0)
         #Elim1 = np.max([x, x*mu+q, x**2*(1 + 4*q**2/(x**2*(1-mu**2)) - mu**2 )/4/q],axis=0)
         #Elim2 = np.max([x-q, x*mu, x**2/4/q],axis=0)
         
         fxeq = q**2/(np.exp(q)-1.0) # !!! NEED TO PROPERLY INCLUDE THE X PARTICLE SPIN STATISTICS !!!
 
-        return (2*proc._g_1*proc._Msquared*x/proc._m1/8/np.pi/q**3)*(np.log((1+np.exp(-Elim1))/(1+np.exp(-Elim2))))*(f - fxeq)
+        return (2*self._g_1*self._Msquared*x/self._m1/8/np.pi/q**3)*(np.log((1+np.exp(-Elim1))/(1+np.exp(-Elim2))))*(f - fxeq)
         # !!! Check whether all the factors correspond to the definition: (left-hand side fBE ) = collisionTerm(x,q,f)/(2*g_a*E_a) !!!
 
-    def rate(proc,x,Y):
+    def rate(self, x, Y):
         # with a Bessel function (MB distribution for decaying particle)
-        return 8*proc._Gamma*proc._m1**3*(kn(1,x)/x)*(1 - Y/Y_x_eq(proc._m1/x))/(2*np.pi)**2 # !!! CHECK THE NUMBERS OF DEGREES OF FREEDOM !!!
+        return 8*self._Gamma*self._m1**3*(kn(1,x)/x)*(1 - Y/Y_x_eq(self._m1/x))/(2*np.pi)**2 # !!! CHECK THE NUMBERS OF DEGREES OF FREEDOM !!!
 
+class Annihilation: # 2->2 annihilation
+        """
+        A class for computing Scalar Singlet Dark Matter (SSDM) annihilation.
+
+        Author: Adam Gomułka
+        """
+        def __init__(self, m1: float, g_1: float, lambda_S: float, 
+                     x_min: float = 10, x_max: float = 200, num_points: int = 100):
+            """
+            Parameters  
+            ----------
+            m1 : float
+                The mass of the annihilating particles.
+            g_1 : float
+                The number of degrees of freedom of the annihilated particles.
+            lambda_S : float
+                The coupling constant.
+            x_min : float
+                The minimum value of x = m/T.
+            x_max : float
+                The maximum value of x = m/T.
+            num_points : int
+                The number of points in the x grid.
+            """
+            self._m1 = m1 
+            self._g_1 = g_1
+            self._lambda_S = lambda_S
+            self._x_table = np.logspace(np.log10(x_min), np.log10(x_max), num_points)
+            self._sigma_v_table = self._tabulate_sigma_v()
+            self._sigma_v_interp = interp1d(self._x_table, self._sigma_v_table, kind='cubic', fill_value='extrapolate')
+
+        def D_h_squared(self, s: float) -> float:
+            """Helper function to compute the cross sections."""
+            #Gamma_inv = self._lambda_S**2*pp.v_0**2 / (32 * np.pi * pp.higgs_mass**2)*np.sqrt(1-4*self._m1**2/pp.higgs_mass**2)
+            return 1 / ((s - pp.higgs_mass**2)**2 + pp.higgs_mass**2 * (pp.Gamma_h_tot)**2)
+
+        def sigma_v_cms(self, s: float) -> float:
+            """Compute the cross-section times velocity in the center of mass frame."""
+            return 2 * self._lambda_S**2 * pp.v_0**2 / np.sqrt(s) * self.D_h_squared(s) * pp.Gamma_h(np.sqrt(s))
+
+        def _tabulate_sigma_v(self) -> np.ndarray:
+            """Tabulate the cross-section times velocity."""
+            sigma_v_values = []
+            for x in tqdm(self._x_table):
+                prefactor = x / (8 * self._m1**5 * kn(2, x)**2)
+                s_min = (2 * self._m1)**2
+                s_max = 1.215 * s_min # should be adjusted 
+                def integrand(s: float) -> float:
+                    #return s * np.sqrt(s - 4 * self._m1**2) * kn(1, x * np.sqrt(s) / self._m1) * self.sigma_v_cms(s)*s/(2*s-4*self._m1**2)
+                    return np.sqrt(s) * (s - 4 * self._m1**2) * kn(1, x * np.sqrt(s) / self._m1) * self.sigma_v_cms(s)*s/(2*s-4*self._m1**2)
+
+                def transformed_integrand(log_s: float) -> float:
+                    s = np.exp(log_s)
+                    return integrand(s) * s  # Jacobian of the transformation ds = s d(log_s)
+                
+                # Integration limits in the transformed variable
+                log_s_min = np.log(s_min)
+                log_s_max = np.log(s_max)
+
+                # Perform the integration in the transformed variable
+                integral, _ = quad(transformed_integrand, log_s_min, log_s_max)
+
+                sigma_v_values.append(prefactor * integral)
+
+                #integral, _ = quad(integrand, s_min, np.inf)
+                #sigma_v_values.append(prefactor * integral)
+
+                # # Plot the transformed integrand for debugging
+                # log_s_values = np.linspace(log_s_min2, log_s_max, 100)
+                # s_values = np.exp(log_s_values)
+                # plt.plot(s_values, [integrand(s) for s in s_values])
+                # plt.xscale('log')
+                # plt.yscale('log')
+                # plt.xlabel('s')
+                # plt.ylabel('Integrand')
+                # plt.title(f'Transformed Integrand for x={x}')
+                # plt.show()
+
+            return np.array(sigma_v_values)
+
+        def sigma_v(self, x: float) -> float:
+            """Compute the thermal averaged cross-section times velocity via cubic interpolation from _sigma_v_table.""" 
+            return self._sigma_v_interp(x)
+
+        def rate(self, x: float, Y: float) -> float:
+            """
+            Compute the rate of the annihilation process -- the R.H.S. of the Boltzmann equation.
+
+            Parameters
+            ----------
+            x : float
+                The mass of scalar particle to the temperature ratio: m/T.
+            Y : float
+                The dark matter abundance.
+            """
+
+            rate = self.sigma_v(x)*(Y_x_eq_massive(self._m1/x, self._m1)**2-Y**2)*s_ent(self._m1/x)**2
+
+            return rate
 # =================================================================================================================================
 
 # Class of the solver
 class Model: 
-    def __init__(model, m, g_dof, p_type, x=np.linspace(1.0,10.0,10), q=np.linspace(0.1,20.,10)):
-        model._m = m # m is not (!) the mass of the field, but rather the mass in the relation x = m/T
-        model._g = g_dof # g_dof is the number of field's degrees of freedom
-        model._p_type = p_type # particle's spin statistics (b = boson, f = fermion, m = Maxwell-Boltzmann particle)
-        model._x = x # x should be a numpy vector (check!)
-        model._q = q # q should be a numpy vector
+    def __init__(self, m, g_dof, p_type, x=np.linspace(1.0,10.0,10), q=np.linspace(0.1,20.,10)):
+        self._m = m # m is not (!) the mass of the field, but rather the mass in the relation x = m/T
+        self._g = g_dof # g_dof is the number of field's degrees of freedom
+        self._p_type = p_type # particle's spin statistics (b = boson, f = fermion, m = Maxwell-Boltzmann particle)
+        self._x = x # x should be a numpy vector (check!)
+        self._q = q # q should be a numpy vector
         # We can change the grid (x,q) later 
-        model._f = np.zeros_like([model._x, model._q]) # solution of fBE - matrix of size Nx*Nq
+        self._f = np.zeros_like([self._x, self._q]) # solution of fBE - matrix of size Nx*Nq
         #model._f = np.zeros((np.size(x),np.size(q)))
 
-    def getX(model):
-        return model._x
+    def getX(self):
+        return self._x
 
-    def getQ(model):
-        return model._q
+    def getQ(self):
+        return self._q
 
-    def getSolution(model):
-        return model._f
+    def getSolution(self):
+        return self._f
 
-    def changeGrid(model,x_new,q_new):
-        model._x = x_new
-        model._q = q_new
-        model._f = np.zeros((np.size(x_new),np.size(q_new)))
+    def changeGrid(self, x_new, q_new):
+        self._x = x_new
+        self._q = q_new
+        self._f = np.zeros((np.size(x_new),np.size(q_new)))
 
     # Initial Collision Term of the model
-    def _CI(model,x,q,f):
+    def _CI(self, x, q, f):
         return 0.0
 
     # Modify the Collision Term of the model
-    def addCollisionTerm(model,CollTerm): # !!! CHECK IF THIS FUNCTION ASSIGNMENT AIN'T TOO SLOW !!!
+    def addCollisionTerm(self, CollTerm): # !!! CHECK IF THIS FUNCTION ASSIGNMENT AIN'T TOO SLOW !!!
 
-        original_CI = model._CI
+        original_CI = self._CI
 
         def combined_CI(x,q,f):
             return original_CI(x,q,f) + CollTerm(x,q,f)
         
-        model._CI = combined_CI
+        self._CI = combined_CI
 
     # ***************************************************************************************************
     # Non-Adaptive ODE system method Solver for the Full Boltzmann Equation
-    def solve_fBE(model,f0):
+    def solve_fBE(self, f0):
         # x and q are vectors
         # CI is the collision integral - should be a function that takes two values (x,q)
         # f0 should be a vector of initial values (of the same length as q)
@@ -86,8 +191,8 @@ class Model:
         #model._x = x
         #model._q = q
         #model._f = np.zeros_like([x_new,q_new])
-        x = model._x
-        q = model._q
+        x = self._x
+        q = self._q
     
         # Sizes of x and q arrays
         sx = x.size
@@ -123,45 +228,76 @@ class Model:
                   dfdq[j] = fq[j-1]*(1.0 + dq/2 + dq**2/6 + dq**3/24 + dq**4/120) # exponential tail
                 
             #dfq_x[j] = ( gtilda(m1/x)*( q[j]*dfdq[j] - 2*fq[j] ) + q[j]**2*CollInt_dec(x,q[j])*(fq[j] - f_eq[j])/H_t(m1/x) )/x
-            dfq_x = ( gtilda(model._m/x)*( q*dfdq - 2*fq ) + q**2*(model._CI(x,q,fq)/(2*model._g*q ))/H_t(model._m/x) )/x
+            dfq_x = ( gtilda(self._m/x)*( q*dfdq - 2*fq ) + q**2*(self._CI(x,q,fq)/(2*self._g*q ))/H_t(self._m/x) )/x
             # CHANGE q IN THE DENOMINATOR BELOW COLLISION TERM TO THE ENERGY OF THAT STATE
 
-            
             return dfq_x
     
         
         fBE_sol = solve_ivp(fBE_RHS,[x[0], x[-1]], f0, t_eval = x).y
     
-        model._f = np.transpose(fBE_sol)
+        self._f = np.transpose(fBE_sol)
     # ***************************************************************************************************
     
  
 
     # Get the density from the PDF (using trapezoidal rule)
-    def getDensity(model):
-        Y_pde = model._g*np.trapz(model._f,model._q, axis=1)*(model._m/model._x)**3/2/np.pi**2/s_ent(model._m/model._x)
+    def getDensity(self):
+        Y_pde = self._g*np.trapz(self._f, self._q, axis=1)*(self._m/self._x)**3/2/np.pi**2/s_ent(self._m/self._x)
     
         return Y_pde
 
     
-    # Solve the standard nBE (using scipy.integrate.solve_ivp)
-    def solve_nBE(model,x,Rate,Y0):
-    
-        # RHS of the Boltzmann equation
-        #YBE_RHS = lambda t,y: 8*Gamma*m1**3*qintode(t)[0]*(1 - y/Y_x_eq(m1/t)/g_x)*((2*np.pi)**2*H(m1/t)*s_ent(m1/t)*t**3)**(-1)
-        YBE_RHS = lambda x,Y: Rate(x,Y)*(H_t(model._m/x)*s_ent(model._m/x)*x)**(-1) 
-    
-        sol =  solve_ivp(YBE_RHS,[x[0], x[-1]], [Y0], t_eval = x)
-    
-        return sol.y[0]
+    def solve_nBE(self, x, Rate, Y0):
+        # Setup logging
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+        start_time = time.time()
+        last_log_time = start_time
+        log_interval = 1  # Log every 1 second
+        x_start, x_end = x[0], x[-1]
+
+        def YBE_RHS(x, Y):
+            nonlocal last_log_time
+            current_time = time.time()
+            
+            if current_time - last_log_time >= log_interval:
+                elapsed_time = current_time - start_time
+                progress = (x - x_start) / (x_end - x_start) * 100
+                logging.info(f"Progress: {x}/{x_end}, {progress:.2f}% - Elapsed time: {elapsed_time:.2f} seconds")
+                last_log_time = current_time
+            
+            return Rate(x, Y) * (H_t(self._m/x) * s_ent(self._m/x) * x)**(-1)
+
+        logging.info("Starting solve_nBE...")
+
+        # Solve the differential equation
+        sol = solve_ivp(
+            YBE_RHS,
+            [x_start, x_end],
+            [Y0],
+            t_eval=x,
+            method='Radau',
+            rtol=1e-6, 
+            atol=1e-8,  
+            vectorized=True  
+        )
+
+        if not sol.success:
+            logging.error(f"Integration failed: {sol.message}")
+        else:
+            end_time = time.time()
+            total_time = end_time - start_time
+            logging.info(f"solve_nBE completed in {total_time:.2f} seconds")
+
+        return sol.y[0] if sol.success else None
 
     
-    def plot2D(model):
+    def plot2D(self):
 
-        mesh_q,mesh_x = np.meshgrid(model._q,model._x)
+        mesh_q, mesh_x = np.meshgrid(self._q, self._x)
         
         plt.figure()
-        plt.pcolormesh(mesh_q,mesh_x,model._f)
+        plt.pcolormesh(mesh_q, mesh_x, self._f)
         plt.colorbar()
         plt.gca().set_title('PDE solution')
         plt.xlabel('q')
@@ -169,11 +305,11 @@ class Model:
         plt.show()
 
 
-    def plotFinalPDF(model):
+    def plotFinalPDF(self):
 
         plt.figure()
-        plt.plot(model._q,model._f[-1,:])
-        plt.plot(model._q,model._q**2/(np.exp(model._q) - 1.0),'--')
+        plt.plot(self._q, self._f[-1,:])
+        plt.plot(self._q, self._q**2/(np.exp(self._q) - 1.0),'--')
         plt.xlabel('q')
         plt.ylabel('q^2 f(q)')
         plt.legend(["PDF Final", "Equilibrium"],loc="upper right")
