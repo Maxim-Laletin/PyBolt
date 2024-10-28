@@ -15,29 +15,46 @@ import logging
 from scipy.special import kn # Bessel function
 
 class DecayToX: # 1->2 decay where X is massless
-    def __init__(self, m1, m2, g_1, Msquared, Gamma):
-        self._m1 = m1 # mass of the decaying particle
-        self._m2 = m2 # mass of the daughter particle
-        self._mu = m2/m1 # ratio of masses !!! (CHECK THAT M1 AND M2 ARE SANE) !!!
-        self._g_1 = g_1 # dof of the decaying particle
-        self._Msquared = Msquared # squared amplitude of the decay (summed over all final states)
-        self._Gamma = Gamma # !!! CAN BE ACTUALLY CALCULATED FROM MSQUARED
+    """
+    A class for the 2-body decay processes with 1 (massless) DM particle.
+    collisionTerm is used for the fBE solution, while the rate is used for the nBE solution.
+
+    Author: Maxim Laletin
+    """
+    def __init__(self, m1: float, m2: float, g_1: float, Msquared: float, Gamma: float):
+        """
+        Parameters  
+        ----------
+        m1: float
+            The mass of the decaying particle
+        m2: float
+            The mass of the daughter particle (not DM)
+        g_1: float
+            The number of dof of the DM particle
+        Msquared: float
+            The value of the amplitude squared SUMMED over all final states (constant in this case)
+        Gamma: float
+            The value of the decay width (can be actually computed from Msquared)
+        """
+        self._m1 = m1 
+        self._m2 = m2 
+        self._mu = m2/m1 # ratio of masses
+        self._g_1 = g_1
+        self._Msquared = Msquared 
+        self._Gamma = Gamma 
 
     def collisionTerm(self, x, q, f):
         # Limits in the collision term
         Elim1 = np.max([x*np.ones(q.shape), x*self._mu+q, x**2*(1 + 4*q**2/(x**2*(1-self._mu**2)) - self._mu**2 )/4/q],axis=0)
         Elim2 = np.max([x-q, x*self._mu*np.ones(q.shape), x**2/4/q],axis=0)
-        #Elim1 = np.max([x, x*mu+q, x**2*(1 + 4*q**2/(x**2*(1-mu**2)) - mu**2 )/4/q],axis=0)
-        #Elim2 = np.max([x-q, x*mu, x**2/4/q],axis=0)
         
-        fxeq = q**2/(np.exp(q)-1.0) # !!! NEED TO PROPERLY INCLUDE THE X PARTICLE SPIN STATISTICS !!!
+        fxeq = q**2/(np.exp(q)-1.0) 
 
         return (2*self._g_1*self._Msquared*x/self._m1/8/np.pi/q**3)*(np.log((1+np.exp(-Elim1))/(1+np.exp(-Elim2))))*(f - fxeq)
-        # !!! Check whether all the factors correspond to the definition: (left-hand side fBE ) = collisionTerm(x,q,f)/(2*g_a*E_a) !!!
 
     def rate(self, x, Y):
         # with a Bessel function (MB distribution for decaying particle)
-        return 8*self._Gamma*self._m1**3*(kn(1,x)/x)*(1 - Y/Y_x_eq(self._m1/x))/(2*np.pi)**2 # !!! CHECK THE NUMBERS OF DEGREES OF FREEDOM !!!
+        return 8*self._Gamma*self._m1**3*(kn(1,x)/x)*(1 - Y/Y_x_eq(self._m1/x))/(2*np.pi)**2
 
 class Annihilation: # 2->2 annihilation
         """
