@@ -43,17 +43,38 @@ class DecayToX: # 1->2 decay where X is massless
         self._Msquared = Msquared 
         self._Gamma = Gamma 
 
-    def collisionTerm(self, x, q, f):
-        # Limits in the collision term
+    def collisionTerm(self, x: float, q: List[float], f: List[float]) -> List[float]:
+        """
+        The collision term below is for the production of a scalar massless particle in the decay with the mother particle and the other daugther particle being fermions
+
+        Parameters  
+        ----------
+        x: float 
+            The inverse unit of temperature x = m/T
+        q: List[float]
+            The vector of momenta of particle X divided by T
+        f: List[float]
+            The distribution function of X particle (vector should be the same size as q)  
+        """
+        # The following structure comes from the integration limits
         Elim1 = np.max([x*np.ones(q.shape), x*self._mu+q, x**2*(1 + 4*q**2/(x**2*(1-self._mu**2)) - self._mu**2 )/4/q],axis=0)
         Elim2 = np.max([x-q, x*self._mu*np.ones(q.shape), x**2/4/q],axis=0)
-        
+        # Distribution function for x 
         fxeq = q**2/(np.exp(q)-1.0) 
 
         return (2*self._g_1*self._Msquared*x/self._m1/8/np.pi/q**3)*(np.log((1+np.exp(-Elim1))/(1+np.exp(-Elim2))))*(f - fxeq)
 
-    def rate(self, x, Y):
-        # with a Bessel function (MB distribution for decaying particle)
+    def rate(self, x: float, Y: float) -> float:
+        """
+        The rate of decay that enters the number density Boltzmann equation (with the MB distribution for the decaying particle)
+
+        Parameters  
+        ----------
+        x: float
+            The inverse unit of temperature x = m/T
+        Y: float
+            The comoving abundance of particle X at the given value of x
+        """
         return 8*self._Gamma*self._m1**3*(kn(1,x)/x)*(1 - Y/Y_x_eq(self._m1/x))/(2*np.pi)**2
 
 class Annihilation: # 2->2 annihilation
