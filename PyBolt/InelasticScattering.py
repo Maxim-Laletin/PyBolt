@@ -15,16 +15,16 @@ class Inelastic:  # 1->2 decay where X is massless
         """
         Parameters
         ----------
-        m1: float
-            The mass of the decaying particle [GeV]
-        m2: float
-            The mass of the daughter particle (not DM) [GeV]
-        g_1: float
-            The number of dof of the DM particle [1]
-        Msquared: float
-            The value of the amplitude squared SUMMED over all final states (constant in this case) [1]
-        Gamma: float
-            The value of the decay width (can be actually computed from Msquared) [GeV^4]
+        m_X: float
+            The mass of the X particle (unknown distribution)
+        m_k: float
+            The mass of the k particle
+        ... 
+        
+        g_X: float
+            The number of dof of the X particle [1]
+        sigma: Callable[[float],float]
+            The cross section of the reactions as a function of s 
         """
         self._mX = m_X
         self._mk = m_k
@@ -32,6 +32,8 @@ class Inelastic:  # 1->2 decay where X is massless
         self._mj = m_j
         self._gX = g_X
         self._sigma = sigma
+
+        self._mmax = max(m_X, m_k, m_i, m_j) 
 
     #def integral_s(self, s_min: float,s_max: float) -> float:
   
@@ -64,14 +66,15 @@ class Inelastic:  # 1->2 decay where X is massless
             ek_min = self.mk
           ek_max =  20*ek_min # [1]
           # ADD A BETTER CONDITION FOR THE UPPER LIMIT ek
-          s_min = lambda ek: max( self._mx**2 + self._mk**2 + 2*ex*ek - 2*np.sqrt(ek**2 - self._mk**2)*q , (self._mi + self._mj)**2 ) # [GeV^2]
-          s_max = lambda ek: self._mx**2 + self._mk**2 + 2*ex*ek + 2*np.sqrt(ek**2 - self._mk**2)*q # [GeV^2]
+          s_min = lambda ek: max( self._mx**2 + self._mk**2 + 2*ex*ek - 2*np.sqrt(ek**2 - self._mk**2)*q , (self._mi + self._mj)**2 )*(self._mmax/x)**2 # [GeV^2]
+          s_max = lambda ek: ( self._mx**2 + self._mk**2 + 2*ex*ek + 2*np.sqrt(ek**2 - self._mk**2)*q )*(self._mmax/x)**2 # [GeV^2]
           
           #integral_ek, _ = quad(lambda ek: ek*np.exp(-ek*x/self._mX)*integral_s(s_min,s_max), ek_min, ek_max)
-          integral_ek, _ = (self._mX/x)**  *dblquad(lambda ek, s: np.exp(-ek), ek_min, ek_max, s_min, s_max) # [GeV^2]
+          integral_ek, _ = dblquad(lambda ek, s: 0.5*np.exp(-ek)*self._sigma(s)*np.sqrt( (s - (self._mx + self._mk)**2)*(s - (self._mx - self._mk)**2) ), ek_min, ek_max, s_min, s_max) # [GeV^2]
 
           return np.exp(-np.sqrt(x**2 + q**2))*integral_ek/(2*np.pi)**2 # [GeV^2]
 
+        # CHECK THE DIMENSIONS AND THE CORRECTNESS
         return (1.0 - f/feq)*gamma(x,q)/2/self._gX/np.sqrt(self._m_X**2 + q**2) # [GeV]
     
 
