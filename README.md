@@ -5,4 +5,7 @@ Authors: Maxim Laletin, Michał Łukawski, Adam Gomułka
 
 ## Current version
 
-The current version includes only the process of 2-body decays that produce one dark matter particle, which is the case of some dark radiation models like axions from lepton flavor-violating decays. Please use the 'UsingFBE_decay' notebook as an explanatory example of using PyBolt. 
+The current version includes:
+1) 2-body decay process that produce one dark matter particle (which is the case of some dark radiation models like axions from lepton flavor-violating decays);
+2) Simplified treatment of the lepton annihilation into an axion and photon (assuming Maxwell-Boltzmann distribution for leptons)
+3) Simplified treatment of the Primakoff scattering on leptons (assuming Maxwell-Boltzmann distribution for leptons)
