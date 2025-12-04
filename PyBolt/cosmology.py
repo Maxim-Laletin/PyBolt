@@ -1,6 +1,8 @@
 import numpy as np
 from .constants import MPL, Zeta3
 from scipy.interpolate import CubicSpline  # interpolation
+from scipy.integrate import quad
+from scipy.special import kn  # Bessel function
 
 # == Extracting the entropy degrees of freedom (taken from 1606.07494) ==
 
@@ -72,3 +74,18 @@ Y_x_eq_massive = (
     * (m / T) ** (3 / 2)
     * np.exp(-m / T)
 )  # 1
+
+def nmeq_MB(x: float, g: float, m: float) -> float:
+    """ Equilibrium number density for Maxwell-Boltzmann distribution """
+    
+    return g*m**3*kn(2,x)/2/np.pi**2/x # [GeV**3]
+    
+def nmeq(x: float, g: float, m: float) -> float: 
+    """ Equilibrium number density for fermions (general)"""
+
+    integral, _ = quad(lambda t: np.sqrt(t**2 - x**2)*t/(np.exp(t)+1.0),x,np.inf)
+    
+    return g*m**3*integral/2/np.pi**2/x**3 # [GeV**3]
+
+# Equilibrium photon number density
+npheq = lambda T: 2*Zeta3*T**3/np.pi**2 # [GeV**3]
